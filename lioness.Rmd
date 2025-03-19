@@ -1,0 +1,167 @@
+
+**NOTE: Each section is run individually on HPC**
+
+# Run LIONESS on AMTEC data
+
+```{r}
+
+library(WGCNA)
+library(lionessR)
+library(data.table)
+
+#output from main targets workflow
+load("output_exprs_lioness.RData")#amtec_tcga_annot, mm, comb_ltpm
+
+#from previous, use of adjacency instead of tom means that the modules can be run seperately
+
+adj.fun <- function(expr){
+  
+  use.adj <- adjacency(t(expr), 
+                       type = "signed hybrid", 
+                       power = 2,
+                       corFnc = "bicor", corOptions = "maxPOutliers = 0.1")
+  
+  use.adj
+  
+}
+
+tcga.exprs <- comb_ltpm[mm$gene_id,amtec_tcga_annot[cohort=="TCGA",r_acc]]
+
+#Using TCGA as the main network, add in each sample and run LIONESS to recover
+#the patient-specific network
+
+lion.res.biop <- lapply(split(amtec_tcga_annot[cohort=="AMTEC"], by=c("ptid","biopsy")), function(x){
+  
+  tmp.exprs <- cbind(tcga.exprs, comb_ltpm[rownames(tcga.exprs),x$r_acc,drop=F])
+  
+  tmp.lion <- lioness(tmp.exprs, f=adj.fun) 
+  
+  tmp.lion.mat <- SummarizedExperiment::assay(tmp.lion)
+  
+  list(adj=adj.fun(tmp.exprs), edges=tmp.lion.mat[,ncol(tmp.lion.mat),drop=F])
+  
+})
+
+#create a melted version 
+
+lion.res.dt <- rbindlist(lapply(lion.res.biop, function(x){
+  
+  data.table(edge=rownames(x$edges), weight=x$edges[,1])
+  
+}), idcol="ptid_biop")
+
+lion.res.dt[,trunc_weight:=weight]
+lion.res.dt[weight < 0,trunc_weight:=0]
+
+#save an array version
+
+lion.res.dt[,c("gene1", "gene2"):=tstrsplit(edge, "_")]
+
+lion.ar <- reshape2::acast(gene1~gene2~ptid_biop, value.var="trunc_weight",data=lion.res.dt)
+
+save(lion.ar, file="lioness_array.RData")
+
+#Compute network concepts from rescaled network per-module
+
+module.stats <- lapply(split(mm, by="cur_label"), function(m){
+  
+  message(m$cur_label[1])
+  
+  lapply(setNames(dimnames(lion.ar)[[3]], dimnames(lion.ar)[[3]]), function(x){
+  
+    message(x)
+    
+    tmp.adj <- lion.ar[m$gene_id,m$gene_id,x] / max(lion.ar[m$gene_id,m$gene_id,x])
+    
+    tmp.conc <- fundamentalNetworkConcepts(tmp.adj)
+    
+    list(per_gene=cbind(gene_id=rownames(tmp.adj), as.data.table(tmp.conc[c("Connectivity", "ScaledConnectivity", "ClusterCoef", "MAR")])), 
+         overall=as.data.table(tmp.conc[c("Density", "Centralization", "Heterogeneity")]))
+  })
+  
+})
+  
+save(module.stats, file="lioness_network_concepts.RData")
+
+```
+
+# Run LIONESS on AMTEC validation data
+
+```{r}
+
+library(WGCNA)
+library(lionessR)
+library(data.table)
+
+load("valid_exprs_lioness.RData")#valid_tcga_annot, mm, valid_ltpm
+
+#from previous, use of adjacency instead of tom means that the modules can be run seperately
+
+#using run_twok_2p_v4.RData
+
+adj.fun <- function(expr){
+  
+  use.adj <- adjacency(t(expr), 
+                       type = "signed hybrid", 
+                       power = 2,
+                       corFnc = "bicor", corOptions = "maxPOutliers = 0.1")
+  
+  use.adj
+  
+}
+
+tcga.exprs <- valid_ltpm[mm$gene_id,valid_tcga_annot[cohort=="TCGA",r_acc]]
+
+lion.res.biop <- lapply(split(valid_tcga_annot[cohort=="Validation"], by=c("ptid","biopsy")), function(x){
+  
+  tmp.exprs <- cbind(tcga.exprs, valid_ltpm[rownames(tcga.exprs),x$r_acc,drop=F])
+  
+  tmp.lion <- lioness(tmp.exprs, f=adj.fun) 
+  
+  tmp.lion.mat <- SummarizedExperiment::assay(tmp.lion)
+  
+  list(adj=adj.fun(tmp.exprs), edges=tmp.lion.mat[,ncol(tmp.lion.mat),drop=F])
+  
+})
+
+#create a melted version 
+
+lion.res.dt <- rbindlist(lapply(lion.res.biop, function(x){
+  
+  data.table(edge=rownames(x$edges), weight=x$edges[,1])
+  
+}), idcol="ptid_biop")
+
+lion.res.dt[,trunc_weight:=weight]
+lion.res.dt[weight < 0,trunc_weight:=0]
+
+lion.res.dt[,c("gene1", "gene2"):=tstrsplit(edge, "_")]
+
+lion.ar <- reshape2::acast(gene1~gene2~ptid_biop, value.var="trunc_weight",data=lion.res.dt)
+
+save(lion.ar, file="valid_lioness_array.RData")
+
+#compute per-module
+
+module.stats <- lapply(split(mm, by="cur_label"), function(m){
+  
+  message(m$cur_label[1])
+  
+  lapply(setNames(dimnames(lion.ar)[[3]], dimnames(lion.ar)[[3]]), function(x){
+  
+    message(x)
+    
+    tmp.adj <- lion.ar[m$gene_id,m$gene_id,x] / max(lion.ar[m$gene_id,m$gene_id,x])
+    
+    tmp.conc <- fundamentalNetworkConcepts(tmp.adj)
+    
+    list(per_gene=cbind(gene_id=rownames(tmp.adj), as.data.table(tmp.conc[c("Connectivity", "ScaledConnectivity", "ClusterCoef", "MAR")])), 
+         overall=as.data.table(tmp.conc[c("Density", "Centralization", "Heterogeneity")]))
+  })
+  
+})
+  
+save(module.stats, file="lioness_validation_network_concepts.RData")
+
+
+```

@@ -1,0 +1,543 @@
+**NOTE: Each section was run separately on HPC as opposed to standard use of this notebook format**
+
+# Initial formation of dataset/modules
+
+```{r}
+
+library(targets)
+library(data.table)
+library(WGCNA)
+
+tcga.tpm <- tar_read(filt_tcga_dge)
+
+logCPM <- log2(tcga.tpm$dge[tcga.tpm$wgcna.keep,]+1)
+
+out.dir <- "wgcna"
+  
+if (file.exists(out.dir)==F) dir.create(out.dir)
+
+#first remove those genes with zero mad
+
+row.mads <- matrixStats::rowMads(logCPM)
+
+logCPM <- logCPM[row.mads > 0,]
+
+expr.vars <- apply(logCPM, 1, var)
+
+datExpr.2 <- t(logCPM[order(expr.vars, decreasing=T),][1:2000,])
+
+datExpr.5 <- t(logCPM[order(expr.vars, decreasing=T),][1:5000,])
+
+expr.list <- list(twok=datExpr.2, fivek=datExpr.5)
+  
+  #The use of bicor etc was based on the WGCNA FAQ: https://labs.genetics.ucla.edu/horvath/CoexpressionNetwork/Rpackages/WGCNA/faq.html
+  
+  for(i in names(expr.list)){
+    message(i)
+    powers = c(c(1:10), seq(from = 12, to=30, by=2))
+    # Call the network topology analysis function
+    sft = pickSoftThreshold(expr.list[[i]], powerVector = powers, verbose = 5, networkType = "signed hybrid", corFnc=bicor, corOptions=list(maxPOutliers = 0.1))
+    # Plot the results:
+    
+    png(file.path(out.dir, paste0("threshold_plot_",i,".png")), width = 9, height=5, units="in", res=300)
+    
+    sizeGrWindow(9, 5)
+    par(mfrow = c(1,2));
+    cex1 = 0.9;
+    # Scale-free topology fit index as a function of the soft-thresholding power
+    plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+         xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+         main = paste("Scale independence"));
+    text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+         labels=powers,cex=cex1,col="red");
+    # this line corresponds to using an R^2 cut-off of h
+    abline(h=0.9,col="red")
+    # Mean connectivity as a function of the soft-thresholding power
+    plot(sft$fitIndices[,1], sft$fitIndices[,5],
+         xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+         main = paste("Mean connectivity"))
+    text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+    
+    dev.off()
+  }
+  
+  #versions
+  
+  #version 1
+  # deepSplit = 2,
+  # detectCutHeight = 0.995,
+  # minModuleSize = 30,
+  # pamStage = T
+  
+  #version 2
+  # deepSplit = 0,
+  # detectCutHeight = 0.995,
+  # minModuleSize = 30,
+  # pamStage = F,
+  
+  #version 3
+  # deepSplit = 2,
+  # detectCutHeight = 0.995,
+  # minModuleSize = 30,
+  # pamStage = F,
+  
+  #version 4
+  # deepSplit = 0,
+  # detectCutHeight = 0.995,
+  # minModuleSize = 30,
+  # pamStage = T
+  
+  v.list <- list(v1=list(deepSplit = 2, detectCutHeight = 0.995, minModuleSize = 30, pamStage=T),
+                 v2=list(deepSplit = 0, detectCutHeight = 0.995, minModuleSize = 30, pamStage = F),
+                 v3=list(deepSplit = 2, detectCutHeight = 0.995, minModuleSize = 30, pamStage = F),
+                 v4=list(deepSplit = 0, detectCutHeight = 0.995,  minModuleSize = 30, pamStage = T))
+  
+  param.list <- list(
+    
+    twok_2p_v1=list(expr=datExpr.2, power=2, version=v.list$v1),
+    twok_2p_v2=list(expr=datExpr.2, power=2, version=v.list$v2),
+    twok_2p_v3=list(expr=datExpr.2, power=2, version=v.list$v3),
+    twok_2p_v4=list(expr=datExpr.2, power=2, version=v.list$v4),
+    
+    twok_3p_v1=list(expr=datExpr.2, power=3, version=v.list$v1),
+    twok_3p_v2=list(expr=datExpr.2, power=3, version=v.list$v2),
+    twok_3p_v3=list(expr=datExpr.2, power=3, version=v.list$v3),
+    twok_3p_v4=list(expr=datExpr.2, power=3, version=v.list$v4),
+    
+    fivek_3p_v1=list(expr=datExpr.5, power=3, version=v.list$v1),
+    fivek_3p_v2=list(expr=datExpr.5, power=3, version=v.list$v2),
+    fivek_3p_v3=list(expr=datExpr.5, power=3, version=v.list$v3),
+    fivek_3p_v4=list(expr=datExpr.5, power=3, version=v.list$v4),
+    
+    fivek_4p_v1=list(expr=datExpr.5, power=4, version=v.list$v1),
+    fivek_4p_v2=list(expr=datExpr.5, power=4, version=v.list$v2),
+    fivek_4p_v3=list(expr=datExpr.5, power=4, version=v.list$v3),
+    fivek_4p_v4=list(expr=datExpr.5, power=4, version=v.list$v4)
+    
+    
+  )
+  
+  for(i in names(param.list)){
+    
+    local({
+      
+      softPower <- param.list[[i]]$power
+      
+      net.res <- blockwiseModules(
+        datExpr=param.list[[i]]$expr, 
+        
+        checkMissingData = TRUE,
+        
+        blocks = NULL,
+        maxBlockSize = 7000,
+        blockSizePenaltyPower = 5,
+        
+        randomSeed = 12345,
+        
+        loadTOM = FALSE,
+        
+        corType = "bicor",
+        maxPOutliers = .1, 
+        quickCor = 0,
+        pearsonFallback = "none",
+        cosineCorrelation = FALSE,
+        
+        power = softPower,
+        networkType = "signed hybrid",
+        replaceMissingAdjacencies = FALSE,
+        
+        TOMType = "signed",
+        TOMDenom = "min",
+        
+        saveTOMs = FALSE, 
+        saveTOMFileBase = "blockwiseTOM",
+        
+        deepSplit = param.list[[i]]$version$deepSplit,
+        detectCutHeight = param.list[[i]]$version$detectCutHeight,
+        minModuleSize = param.list[[i]]$version$minModuleSize,
+        pamStage = param.list[[i]]$version$pamStage,
+        
+        # Gene reassignment, module trimming, and module "significance" criteria
+        
+        reassignThreshold = 1e-6,
+        minCoreKME = 0.5, 
+        minCoreKMESize = 10,
+        minKMEtoStay = 0.3,
+        
+        # Module merging options
+        
+        mergeCutHeight = 0.15, 
+        impute = FALSE, 
+        trapErrors = FALSE, 
+        
+        # Output options
+        
+        numericLabels = TRUE,
+        
+        # Options controlling behaviour
+        
+        nThreads = 0,
+        verbose = 3, indent = 0
+      )
+      
+      pdf(file=file.path(out.dir, paste0("final_modules_",i,".pdf")), width=12, height=9)
+      # open a graphics window
+      sizeGrWindow(12, 9)
+      # Convert labels to colors for plotting
+      mergedColors = labels2colors(net.res$colors)
+      # Plot the dendrogram and the module colors underneath
+      plotDendroAndColors(net.res$dendrograms[[1]], mergedColors[net.res$blockGenes[[1]]],
+                          "Module colors",
+                          dendroLabels = FALSE, hang = 0.03,
+                          addGuide = TRUE, guideHang = 0.05)
+      
+      dev.off()
+      
+      moduleLabels = net.res$colors
+      moduleColors = labels2colors(net.res$colors)
+      MEs = net.res$MEs;
+      geneTree = net.res$dendrograms[[1]];
+      save(MEs, moduleLabels, moduleColors, geneTree,
+           file = file.path(out.dir, paste0("run_",i,".RData")))
+      
+    })
+  }
+  
+  save(datExpr.2, datExpr.5, file=file.path(out.dir, "used_expression.RData"))
+
+```
+
+# Stability assessment using resampling
+
+```{r}
+
+library(WGCNA)
+library(caret)
+
+load(file.path("wgcna", "used_expression.RData"))
+  
+v.list <- list(v1=list(deepSplit = 2, detectCutHeight = 0.995, minModuleSize = 30, pamStage=T),
+               v2=list(deepSplit = 0, detectCutHeight = 0.995, minModuleSize = 30, pamStage = F),
+               v3=list(deepSplit = 2, detectCutHeight = 0.995, minModuleSize = 30, pamStage = F),
+               v4=list(deepSplit = 0, detectCutHeight = 0.995,  minModuleSize = 30, pamStage = T))
+
+orig.param.list <- list(
+    
+    twok_2p_v1=list(expr=datExpr.2, power=2, version=v.list$v1),
+    twok_2p_v2=list(expr=datExpr.2, power=2, version=v.list$v2),
+    twok_2p_v3=list(expr=datExpr.2, power=2, version=v.list$v3),
+    twok_2p_v4=list(expr=datExpr.2, power=2, version=v.list$v4),
+    
+    twok_3p_v1=list(expr=datExpr.2, power=3, version=v.list$v1),
+    twok_3p_v2=list(expr=datExpr.2, power=3, version=v.list$v2),
+    twok_3p_v3=list(expr=datExpr.2, power=3, version=v.list$v3),
+    twok_3p_v4=list(expr=datExpr.2, power=3, version=v.list$v4),
+    
+    fivek_3p_v1=list(expr=datExpr.5, power=3, version=v.list$v1),
+    fivek_3p_v2=list(expr=datExpr.5, power=3, version=v.list$v2),
+    fivek_3p_v3=list(expr=datExpr.5, power=3, version=v.list$v3),
+    fivek_3p_v4=list(expr=datExpr.5, power=3, version=v.list$v4),
+    
+    fivek_4p_v1=list(expr=datExpr.5, power=4, version=v.list$v1),
+    fivek_4p_v2=list(expr=datExpr.5, power=4, version=v.list$v2),
+    fivek_4p_v3=list(expr=datExpr.5, power=4, version=v.list$v3),
+    fivek_4p_v4=list(expr=datExpr.5, power=4, version=v.list$v4)
+  )
+
+#63.2% subsampling instead of the bootstrap
+dparts <- createDataPartition(
+       rnorm(nrow(datExpr.2)),
+       times = 50,
+       p = .632,
+       list = TRUE,
+       groups = 1
+     )
+
+for (resamp in seq_along(dparts)){
+  
+  message(resamp)
+  
+  out.dir <- file.path("wgcna", "resamples", paste0("resamp_", resamp))
+  
+  if (dir.exists(out.dir)==F){
+    dir.create(out.dir, recursive=T)
+  }
+  
+  stopifnot(identical(rownames(datExpr.2), rownames(datExpr.5)))
+  
+  param.list <- lapply(orig.param.list, function(x){
+    
+    tmp.expr <- x$expr
+    rownames(tmp.expr) <- NULL
+    list(expr=tmp.expr[dparts[[resamp]],], power=x$power, version=x$version)
+  })
+  
+  for(i in names(param.list)){
+    
+    local({
+      
+      softPower <- param.list[[i]]$power
+      
+      net.res <- blockwiseModules(
+        datExpr=param.list[[i]]$expr, 
+        
+        checkMissingData = TRUE,
+        
+        blocks = NULL,
+        maxBlockSize = 7000,
+        blockSizePenaltyPower = 5,
+        
+        loadTOM = FALSE,
+        
+        corType = "bicor",
+        maxPOutliers = .1, 
+        quickCor = 0,
+        pearsonFallback = "none",
+        cosineCorrelation = FALSE,
+        
+        power = softPower,
+        networkType = "signed hybrid",
+        replaceMissingAdjacencies = FALSE,
+        
+        TOMType = "signed",
+        TOMDenom = "min",
+        
+        saveTOMs = FALSE, 
+        saveTOMFileBase = "blockwiseTOM",
+        
+        deepSplit = param.list[[i]]$version$deepSplit,
+        detectCutHeight = param.list[[i]]$version$detectCutHeight,
+        minModuleSize = param.list[[i]]$version$minModuleSize,
+        pamStage = param.list[[i]]$version$pamStage,
+        
+        # Gene reassignment, module trimming, and module "significance" criteria
+        
+        reassignThreshold = 1e-6,
+        minCoreKME = 0.5, 
+        minCoreKMESize = 10,
+        minKMEtoStay = 0.3,
+        
+        # Module merging options
+        
+        mergeCutHeight = 0.15, 
+        impute = FALSE, 
+        trapErrors = FALSE, 
+        
+        # Output options
+        
+        numericLabels = TRUE,
+        
+        # Options controlling behaviour
+        
+        nThreads = 0,
+        verbose = 3, indent = 0
+      )
+      
+      moduleLabels = net.res$colors
+      moduleColors = labels2colors(net.res$colors)
+      MEs = net.res$MEs;
+      geneTree = net.res$dendrograms[[1]];
+      save(MEs, moduleLabels, moduleColors, geneTree,
+           file = file.path(out.dir, paste0("run_",i,".RData")))
+      
+    })
+  }
+  
+}
+
+```
+
+# Summarize resampling-based stablity assessment
+
+```{r}
+
+library(data.table)
+
+boot.mod.list <- lapply(list.files(file.path("wgcna", "resamples"), full.names=T), function(x){
+    
+    tmp.boot.files <- list.files(x, pattern=".RData", full.names=T)
+    
+    tmp.boot.files <- setNames(tmp.boot.files, sub("run_", "", sub("\\.RData", "", basename(tmp.boot.files))))
+    
+    lapply(tmp.boot.files, function(y){
+      tmp.clust <- local({mget(load(y))})
+      tmp.clust$moduleColors
+    })
+    
+})
+  
+cur.runs <- list.files("wgcna", pattern="v\\d.RData", full.names=T)
+  
+#compute the adjusted rand index for each bootstrap relative to the original
+
+rand.sum.dt <- rbindlist(lapply(cur.runs, function(x){
+  
+  cur.param <- sub("run_", "", sub("\\.RData", "", basename(x)))
+  
+  cur.res <- local({mget(load(x))})
+  
+  boot.rands <- sapply(boot.mod.list, function(y){
+    
+    mclust::adjustedRandIndex(cur.res$moduleColors, y[[cur.param]])
+  })
+  
+  data.table(param=cur.param, adj_rand=boot.rands)
+  
+}))
+
+#save result
+save(rand.sum.dt, file=file.path("wgcna", "resamples" ,"resamples_results.RData"))
+
+use.param <- rand.sum.dt[,.(min=min(adj_rand), max=max(adj_rand), mean=mean(adj_rand), median=median(adj_rand)),by=param][order(median, decreasing = T)]
+
+use.param[1:5]
+
+#         param       min       max      mean    median
+# 1:  twok_3p_v3 0.5277351 0.8831654 0.7387329 0.7814940
+# 2:  twok_2p_v4 0.6094551 0.8266792 0.7510322 0.7602270
+# 3:  twok_2p_v2 0.4993433 0.8550450 0.6905292 0.7412107
+# 4:  twok_2p_v3 0.5629063 0.8013564 0.7117999 0.7246136
+# 5: fivek_4p_v4 0.5990489 0.7644964 0.7077445 0.7178805
+
+
+rand.sum.dt[,use_param:=factor(param, levels=use.param$param, ordered=T)]
+  
+rand.boot.plot <- ggplot(data=rand.sum.dt, mapping=aes(x=use_param, y=adj_rand)) + geom_boxplot(outlier.shape=NA) + 
+  geom_jitter(height=0, width=.25, alpha=.5) + xlab("") + theme_bw()
+  
+ggsave(rand.boot.plot, file="wgcna/resample_result.pdf", width=13, height=7)
+
+```
+
+# Examine WGCNA params with respect to quality
+
+```{r}
+
+##New R sesion, 
+ 
+library(WGCNA)
+library(data.table)
+library(parallel)
+
+out.dir <- "wgcna"
+
+load(file.path(out.dir, "used_expression.RData"))
+
+found.files <- list.files(out.dir, pattern="v\\d\\.RData", full.names=T)
+
+param.exam <- do.call(rbind, lapply(found.files, function(x){
+  
+  res.list <- local({mget(load(x))})
+  
+  if (grepl("fivek", x)){
+    
+    m.dta <- datExpr.5
+    
+  }else if (grepl("twok", x)){
+    
+    m.dta <- datExpr.2
+    
+  }else{
+    stop("Unknown expr set")
+  }
+  
+  use.pow <- as.numeric(sub("p", "", strsplit(basename(x), "_")[[1]][3]))
+
+  #make random module sets ahead of time...
+  
+  iter.mods <- lapply(1:100, function(x){
+    sample(res.list$moduleColor, replace=F)
+  })
+  
+  iter.mods <- append(list(res.list$moduleColors), iter.mods)
+  
+  #these are module quality statistics from:
+  #http://journals.plos.org/ploscompbiol/article/file?type=supplementary&id=info:doi/10.1371/journal.pcbi.1001057.s006
+  
+  perm.res <- do.call(rbind, mclapply(seq_along(iter.mods), function(y, all.mods, args){
+    
+    message(y)
+    
+    use.mods <- all.mods[[y]]
+    
+    mes <- moduleEigengenes(expr=args$expr, 
+                            colors=use.mods, 
+                            impute = F, 
+                            softPower = args$power)$eigengenes
+    
+    use.kme <- signedKME(args$expr, mes, corFnc="bicor", corOptions = "maxPOutliers = 0.1")
+    
+    do.call(rbind, lapply(unique(use.mods), function(z){
+      
+      temp.cor <- bicor(args$expr[,use.mods==z],maxPOutliers = 0.1)
+      
+      use.adj <- adjacency(args$expr[,use.mods==z], 
+                           type = "signed hybrid", 
+                           power = args$power,
+                           corFnc = "bicor", corOptions = "maxPOutliers = 0.1",
+                           distFnc = "dist", distOptions = "method = 'euclidean'")
+      
+      mean(use.kme[use.mods==z,paste0("kME", z)])
+      
+      data.table(perm=y, module=z, mean_cor=mean(vectorizeMatrix(temp.cor)), 
+                 mean_adj=mean(vectorizeMatrix(use.adj)), 
+                 mean_mar=mean(WGCNA:::.MAR(use.adj)),
+                 mean_kme=mean(use.kme[use.mods==z,paste0("kME", z)]), 
+                 prop_var_exp=mean(use.kme[use.mods==z,paste0("kME", z)]^2), 
+                 mean_cluster_coef=mean(clusterCoef(use.adj)))
+      
+    }))
+    
+  }, iter.mods, list(expr=m.dta,power=use.pow),  mc.cores=10))
+  
+  
+  perm.res$params <- sub("run_", "", sub(".RData", "", basename(x)))
+  
+  perm.res
+  
+}))
+
+save(param.exam, file=file.path(out.dir, "parameter_quality.RData"))
+
+```
+
+# Summarize quality eval
+
+```{r}
+
+library(data.table)
+library(ggplot2)
+
+#use same ordering as before:
+
+load("wgcna/resamples/resamples_results.RData")
+
+use.param <- rand.sum.dt[,.(min=min(adj_rand), max=max(adj_rand), mean=mean(adj_rand), median=median(adj_rand)),by=param][order(median, decreasing = T)]
+
+load(file.path("wgcna", "parameter_quality.RData"))
+
+main.run <- melt(param.exam[perm == 1], id.vars=c("module", "params", "perm"))
+ 
+param.sum <- melt(param.exam[perm != 1], id.vars=c("module", "params", "perm"))[,.(mean_val=mean(value), sd_val=sd(value)), by=.(module, params, variable)]
+
+all.runs <- merge(main.run, param.sum, by=c("module", "params", "variable"))
+
+all.runs[,z_score:=(value-mean_val)/sd_val]
+
+all.runs.sum <- all.runs[variable %in% c("mean_cor", "mean_adj", "prop_var_exp", "mean_kme"),.(z_summary=median(z_score)), by=.(module, params)]
+
+unique.mods <- all.runs.sum[,.N,by=module]
+
+all.runs.sum[,use_param:=factor(params, levels=use.param$param, ordered=T)]
+
+mod.sig <- ggplot(data=all.runs.sum, mapping=aes(x=module, y=z_summary, fill=module)) + geom_bar(stat="identity") + 
+  facet_wrap(~use_param, nrow=2, scales="free_x") + 
+  geom_hline(yintercept=10, linetype="dashed") +
+  geom_hline(yintercept=2, linetype="dashed") +
+  theme_bw() + ylab("Z summary (density measures)") + xlab("") +
+  scale_fill_manual(values=setNames(unique.mods$module, unique.mods$module), guide="none") +
+  theme(axis.text.x=element_blank()) 
+
+ggsave(mod.sig, file="wgcna/module_quality.pdf", width=14, height=7)
+
+```
