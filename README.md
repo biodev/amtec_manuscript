@@ -10,7 +10,8 @@ Retrieve the below files and place them in the corresponding directory
     -   [gencode.v24.annotation.gtf.gz](https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_24/gencode.v24.annotation.gtf.gz)
     -   [h.all.v7.5.1.symbols.gmt](https://data.broadinstitute.org/gsea-msigdb/msigdb/release/7.5.1/h.all.v7.5.1.symbols.gmt)
     -   [Cell_marker_Human.xlsx](http://xteam.xbio.top/CellMarker/download/Human_cell_markers.txt)
-    -   `10780432ccr173509-sup-192911_3_supp_4675335_p6rxmz.xlsx` which is Table S1 from [Tamborero et al 2018](https://aacrjournals.org/clincancerres/article/24/15/3717/80876/A-Pan-cancer-Landscape-of-Interactions-between)
+    -   `10780432ccr173509-sup-192911_3_supp_4675335_p6rxmz.xlsx`
+        -   This is Table S1 from [Tamborero et al 2018](https://aacrjournals.org/clincancerres/article/24/15/3717/80876/A-Pan-cancer-Landscape-of-Interactions-between)
 -   `data/burstein`
     -   `TNBC_Ding_77_gene_signatures.txt` derived from [Table S1](https://pmc.ncbi.nlm.nih.gov/articles/instance/6349443/bin/oncotarget-10-198-s002.docx)
 -   `data/tcga`
@@ -26,6 +27,8 @@ Retrieve the below files and place them in the corresponding directory
         -   `data_clinical_patient.txt`
         -   `data_clinical_sample.txt`
         -   `data_mrna_agilent_microarray.txt`
+-   `data/amtec` and `data/wgcna`
+        - [Request](mailto:mcweeney@ohsu.edu) access to these files
 
 ## Installation
 
@@ -50,3 +53,9 @@ mkdir figures
 ``` r
 targets::tar_make()
 ```
+
+## Licensing
+
+[GNU General Public License v3.0](LICENSE)
+
+This code was developed by Daniel Bottomly, a member of the McWeeney Lab and is protected under copyright by the Oregon Health and Science University Knight Cancer Institute, 2024.
