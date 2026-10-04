@@ -915,3 +915,17 @@ plot.krt23.delta.mar <- function(all.samps, valid.samps, preds, resp.cols){
     "figures/delta_net_conc_plot_KRT23_MAR.pdf"
 }
 
+export.summary.matrix <- function(perf.list, bb.calls){
+    
+    melt.bb <- perf.list$data
+    melt.bb <- melt.bb[variable %in% c("Best_Response", "BLIA_BLIS_IHC", "BLIA_BLIS_IHC_ssGSEA")==F]
+    
+    cast.bb <- dcast(`De-Identified.Id`+Biopsy+cohort+Short_Location~variable, value.var="value", data=melt.bb)
+    
+    cast.bb <- merge(bb.calls[,.(`De-Identified.Id`, Biopsy, Best_Response, OS, OS.time, PFS, PFS.time, Consensus_Call_ssGSEA, Collapsed_Call)], cast.bb, by=c("De-Identified.Id", "Biopsy"), all.x=T)
+    
+    openxlsx::write.xlsx(list(summary=cast.bb), file="output/biomarker_output.xlsx")
+    
+    "output/biomarker_output.xlsx"
+}
+

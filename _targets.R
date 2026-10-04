@@ -477,8 +477,14 @@ list(
     
     tar_target(
         summary_matrix_list,
-        generate.summary.matrix(comb_clin_ssg[(is.na(Consensus_Call)) | (Consensus_Call != "LAR")], me_preds, mzb1_preds, 
-                                ssgsea_preds, ssgsea_preds_top3, zhang_ctree_preds, model_summary)
+        generate.summary.matrix(comb_clin_ssg[(is.na(Consensus_Call)) | (Consensus_Call != "LAR")], me_preds, valid_me_preds, mzb1_preds, valid_mzb1_preds,
+                                ssgsea_preds, valid_ssgsea_preds, ssgsea_preds_top3, valid_ssgsea_top3_preds, zhang_ctree_preds, model_summary)
+    ),
+    
+    tar_target(
+        summary_mat_file,
+        export.summary.matrix(summary_matrix_list, comb_clin_ssg),
+        format = "file"
     ),
     
     ##Figure 3c

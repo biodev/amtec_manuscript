@@ -416,37 +416,50 @@ summarize.models <- function(bb.calls, mods, valid.mods, mzb, valid.mzb, ssg, va
     all.summary
 }
 
-generate.summary.matrix <- function(bb.calls, mods, mzb, ssg, ssg.3, zhang.preds, perf.summary){
+generate.summary.matrix <- function(bb.calls, mods, valid.mods, mzb, valid.mzb, ssg, valid.ssg, ssg.3, valid.ssg.3, zhang.preds, perf.summary){
     
     #brown module
     
     brown.preds <- rbindlist(lapply(mods[grep("brown", names(mods))], function(x) x$preds))[,.(r_acc, Brown_ME=paste0("p",preds))]
+    valid.brown.preds <- rbindlist(lapply(valid.mods[grep("brown", names(valid.mods))], function(x) x$preds))[,.(r_acc, Brown_ME=paste0("p",preds))]
     
-    bb.calls.m <- merge(bb.calls, brown.preds, all.x=T, by="r_acc")
+    comb.brown <- rbind(brown.preds, valid.brown.preds)
+    
+    bb.calls.m <- merge(bb.calls, comb.brown, all.x=T, by="r_acc")
     
     #mzb1
     
     mzb.preds <- rbindlist(lapply(mzb, function(x) x$preds))[,.(r_acc, MZB1=paste0("p",preds))]
+    valid.mzb.preds <- rbindlist(lapply(valid.mzb, function(x) x$preds))[,.(r_acc, MZB1=paste0("p",preds))]
+    comb.mzb <- rbind(mzb.preds, valid.mzb.preds)
     
-    bb.calls.m <- merge(bb.calls.m, mzb.preds, all.x=T, by="r_acc")
+    bb.calls.m <- merge(bb.calls.m, comb.mzb, all.x=T, by="r_acc")
     
     #ssgsea
     
     ssg.preds <- rbindlist(lapply(ssg[grep("brown", names(ssg))], function(x) x$preds))[,.(r_acc, ssGSEA=paste0("p",preds))]
+    valid.ssg.preds <- rbindlist(lapply(valid.ssg[grep("brown", names(valid.ssg))], function(x) x$preds))[,.(r_acc, ssGSEA=paste0("p",preds))]
+    comb.ssg <- rbind(ssg.preds, valid.ssg.preds)
     
-    bb.calls.m <- merge(bb.calls.m, ssg.preds, all.x=T, by="r_acc")
+    bb.calls.m <- merge(bb.calls.m, comb.ssg, all.x=T, by="r_acc")
     
     #ssgsea top3
     
     ssg.3.preds <- rbindlist(lapply(ssg.3[grep("brown", names(ssg.3))], function(x) x$preds))[,.(r_acc, ssGSEA_Top3=paste0("p",preds))]
     
-    bb.calls.m <- merge(bb.calls.m, ssg.3.preds, all.x=T, by="r_acc")
+    valid.ssg.3.preds <- rbindlist(lapply(valid.ssg.3[grep("brown", names(valid.ssg.3))], function(x) x$preds))[,.(r_acc, ssGSEA_Top3=paste0("p",preds))]
+    comb.ssg.3 <- rbind(ssg.3.preds, valid.ssg.3.preds)
+    
+    bb.calls.m <- merge(bb.calls.m, comb.ssg.3, all.x=T, by="r_acc")
     
     #zhang pb
     
     pb.preds <- rbindlist(lapply(zhang.preds$amtec[grepl("pB", names(zhang.preds$amtec))], function(x) x$preds))[,.(r_acc, Zhang_pB=paste0("p",preds))]
+    valid.pb.preds <- rbindlist(lapply(zhang.preds$valid[grepl("pB", names(zhang.preds$valid))], function(x) x$preds))[,.(r_acc, Zhang_pB=paste0("p",preds))]
     
-    bb.calls.m <- merge(bb.calls.m, pb.preds, all.x=T, by="r_acc")
+    comb.pb <- rbind(pb.preds, valid.pb.preds)
+    
+    bb.calls.m <- merge(bb.calls.m, comb.pb, all.x=T, by="r_acc")
     
     bb.calls.m[,BLIA_BLIS_IHC:=Consensus_Call]
     
